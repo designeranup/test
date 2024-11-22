@@ -87,14 +87,19 @@
 
     // Step 1: Next button
     document.getElementById('next1').addEventListener('click', async () => {
-      const selection = await widget.getSelectedTable();
-      if (selection) {
-        selectedTableData = selection;
-        document.getElementById('table-selection').textContent =
-          `Table ID: ${selection.tableId}, Rows: ${selection.rowIds.join(', ')}, Columns: ${selection.columnIds.join(', ')}`;
-        showStep(1);
-      } else {
-        alert('Please select data from the table before proceeding.');
+      try {
+        const selection = await widget.fetchSelectedTable();
+        if (selection && selection.rowIds.length > 0 && selection.columnIds.length > 0) {
+          selectedTableData = selection;
+          document.getElementById('table-selection').textContent =
+            `Table ID: ${selection.tableId}, Rows: ${selection.rowIds.join(', ')}, Columns: ${selection.columnIds.join(', ')}`;
+          showStep(1);
+        } else {
+          alert('Please select data from the table before proceeding.');
+        }
+      } catch (err) {
+        console.error('Error fetching selected table data:', err);
+        alert('An error occurred while fetching data from the table. Please try again.');
       }
     });
 
@@ -105,14 +110,19 @@
     // Step 3: Previous and Next buttons
     document.getElementById('prev3').addEventListener('click', () => showStep(1));
     document.getElementById('next3').addEventListener('click', async () => {
-      const selection = await widget.getSelectedCard();
-      if (selection) {
-        selectedCardData = selection;
-        document.getElementById('card-selection').textContent =
-          `Fields: ${JSON.stringify(selection)}`;
-        showStep(3);
-      } else {
-        alert('Please select data from the card before proceeding.');
+      try {
+        const selection = await widget.fetchSelectedCard();
+        if (selection) {
+          selectedCardData = selection;
+          document.getElementById('card-selection').textContent =
+            `Fields: ${JSON.stringify(selection)}`;
+          showStep(3);
+        } else {
+          alert('Please select data from the card before proceeding.');
+        }
+      } catch (err) {
+        console.error('Error fetching selected card data:', err);
+        alert('An error occurred while fetching data from the card. Please try again.');
       }
     });
 
@@ -122,24 +132,29 @@
 
     // Step 5: Download Yes and No buttons
     document.getElementById('yes-download').addEventListener('click', async () => {
-      const { tableId, rowIds, columnIds } = selectedTableData;
-      const data = await widget.fetchTableData({ tableId, rowIds, columnIds });
+      try {
+        const { tableId, rowIds, columnIds } = selectedTableData;
+        const data = await widget.fetchTableData({ tableId, rowIds, columnIds });
 
-      // Convert to CSV
-      const csvContent = 'data:text/csv;charset=utf-8,'
-        + data.map(row => row.join(',')).join('\n');
-      const encodedUri = encodeURI(csvContent);
+        // Convert to CSV
+        const csvContent = 'data:text/csv;charset=utf-8,'
+          + data.map(row => row.join(',')).join('\n');
+        const encodedUri = encodeURI(csvContent);
 
-      // Trigger download
-      const link = document.createElement('a');
-      link.setAttribute('href', encodedUri);
-      link.setAttribute('download', 'selected_data.csv');
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+        // Trigger download
+        const link = document.createElement('a');
+        link.setAttribute('href', encodedUri);
+        link.setAttribute('download', 'selected_data.csv');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
 
-      alert('Download complete!');
-      showStep(0); // Restart workflow
+        alert('Download complete!');
+        showStep(0); // Restart workflow
+      } catch (err) {
+        console.error('Error during CSV generation:', err);
+        alert('An error occurred while generating the CSV. Please try again.');
+      }
     });
 
     document.getElementById('no-download').addEventListener('click', () => {
