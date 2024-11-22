@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Custom Grist Widget</title>
+  <script src="https://cdn.jsdelivr.net/npm/@gristlabs/weblinks@0.6.0"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+    .step {
+      display: none;
+    }
+    .step.active {
+      display: block;
+    }
+    .buttons {
+      margin-top: 20px;
+    }
+    button {
+      margin: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div id="step1" class="step active">
+    <h2>Step 1: Select your desired data from the table</h2>
+    <p>Select rows and columns from the table in Grist.</p>
+    <div class="buttons">
+      <button id="next1">Next</button>
+    </div>
+  </div>
+
+  <div id="step2" class="step">
+    <h2>Step 2: Confirm your selected table data</h2>
+    <p>You have selected: <span id="table-selection"></span></p>
+    <div class="buttons">
+      <button id="prev2">Previous</button>
+      <button id="next2">Next</button>
+    </div>
+  </div>
+
+  <div id="step3" class="step">
+    <h2>Step 3: Select data from the card</h2>
+    <p>Select fields from the card in Grist.</p>
+    <div class="buttons">
+      <button id="prev3">Previous</button>
+      <button id="next3">Next</button>
+    </div>
+  </div>
+
+  <div id="step4" class="step">
+    <h2>Step 4: Confirm your selected card fields</h2>
+    <p>You have selected: <span id="card-selection"></span></p>
+    <div class="buttons">
+      <button id="prev4">Previous</button>
+      <button id="next4">Next</button>
+    </div>
+  </div>
+
+  <div id="step5" class="step">
+    <h2>Step 5: Download the selected data</h2>
+    <p>Would you like to download this as a CSV file?</p>
+    <div class="buttons">
+      <button id="yes-download">Yes</button>
+      <button id="no-download">No</button>
+    </div>
+  </div>
+
+  <script>
+    const steps = document.querySelectorAll('.step');
+    let currentStep = 0;
+    let selectedTableData = {};
+    let selectedCardData = {};
+
+    const widget = grist.openWidget();
+
+    // Function to switch steps
+    function showStep(index) {
+      steps.forEach((step, i) => {
+        step.classList.toggle('active', i === index);
+      });
+      currentStep = index;
+    }
+
+    // Step 1: Next button
+    document.getElementById('next1').addEventListener('click', async () => {
+      const selection = await widget.getSelectedTable();
+      if (selection) {
+        selectedTableData = selection;
+        document.getElementById('table-selection').textContent =
+          `Table ID: ${selection.tableId}, Rows: ${selection.rowIds.join(', ')}, Columns: ${selection.columnIds.join(', ')}`;
+        showStep(1);
+      } else {
+        alert('Please select data from the table before proceeding.');
+      }
+    });
+
+    // Step 2: Previous and Next buttons
+    document.getElementById('prev2').addEventListener('click', () => showStep(0));
+    document.getElementById('next2').addEventListener('click', () => showStep(2));
+
+    // Step 3: Previous and Next buttons
+    document.getElementById('prev3').addEventListener('click', () => showStep(1));
+    document.getElementById('next3').addEventListener('click', async () => {
+      const selection = await widget.getSelectedCard();
+      if (selection) {
+        selectedCardData = selection;
+        document.getElementById('card-selection').textContent =
+          `Fields: ${JSON.stringify(selection)}`;
+        showStep(3);
+      } else {
+        alert('Please select data from the card before proceeding.');
+      }
+    });
+
+    // Step 4: Previous and Next buttons
+    document.getElementById('prev4').addEventListener('click', () => showStep(2));
+    document.getElementById('next4').addEventListener('click', () => showStep(4));
+
+    // Step 5: Download Yes and No buttons
+    document.getElementById('yes-download').addEventListener('click', async () => {
+      const { tableId, rowIds, columnIds } = selectedTableData;
+      const data = await widget.fetchTableData({ tableId, rowIds, columnIds });
+
+      // Convert to CSV
+      const csvContent = 'data:text/csv;charset=utf-8,'
+        + data.map(row => row.join(',')).join('\n');
+      const encodedUri = encodeURI(csvContent);
+
+      // Trigger download
+      const link = document.createElement('a');
+      link.setAttribute('href', encodedUri);
+      link.setAttribute('download', 'selected_data.csv');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      alert('Download complete!');
+      showStep(0); // Restart workflow
+    });
+
+    document.getElementById('no-download').addEventListener('click', () => {
+      alert('Download canceled. Returning to Step 1.');
+      showStep(0); // Restart workflow
+    });
+  </script>
+</body>
+</html>
