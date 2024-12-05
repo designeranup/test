@@ -1,22 +1,296 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
+    <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Grist Import/Export Widget</title>
-    <link rel="stylesheet" href="styles.css">
+    <title>Map Widget</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.6.0/dist/leaflet.css" />
+
+    <!-- MarkerCluster CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+
+    <!-- Custom CSS -->
+    <style>
+        #map {
+            width: 100vw;
+            height: 100vh;
+        }
+
+        html, body, #map {
+            margin: 0;
+            padding: 0;
+            background: radial-gradient(#eee 3px, transparent 4px),
+                        radial-gradient(#eee 3px, transparent 4px),
+                        linear-gradient(#fff 4px, transparent 0),
+                        linear-gradient(45deg, transparent 74px, transparent 75px, #a4a4a4 75px, #a4a4a4 76px, transparent 77px, transparent 109px),
+                        linear-gradient(-45deg, transparent 75px, transparent 76px, #a4a4a4 76px, #a4a4a4 77px, transparent 78px, transparent 109px),
+                        #fff;
+            background-size: 109px 109px, 109px 109px,100% 6px, 109px 109px, 109px 109px;
+            background-position: 54px 55px, 0px 0px, 0px 0px, 0px 0px, 0px 0px;
+        }
+
+        .error {
+            background: red;
+            color: white;
+            padding: 2em;
+            margin: 2em;
+        }
+
+        #settings {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 500;
+            padding: 10px;
+            border: 1px solid lightgray;
+            border-radius: 5px;
+            display: none;
+            background: white;
+        }
+
+        #settings > * {
+            color: black;
+        }
+
+        #btnClose {
+            font-size: small;
+            margin-bottom: 5px;
+            text-align: right;
+            cursor: pointer;
+        }
+
+        #btnClose:hover {
+            text-decoration: underline;
+        }
+
+        #lblText {
+            min-width: 100px;
+            display: inline-block;
+        }
+
+        .marker-cluster-selected {
+            border: 3px solid #16b378;
+        }
+    </style>
 </head>
 <body>
-    <div id="app">
-        <h1>Grist Import/Export</h1>
-        <div id="step-container">
-            <!-- Steps dynamically loaded via JavaScript -->
-        </div>
-        <div id="navigation">
-            <button id="prev-button" disabled>Previous</button>
-            <button id="next-button">Next</button>
+    <div id="map"></div>
+
+    <!-- Settings -->
+    <div id="settings">
+        <div id="btnClose">Close</div>
+        <label id="lblToggle" for="cbxMode">
+            <input type="checkbox" id="cbxMode">
+            <span id="lblText">All locations</span>
+        </label>
+        <br/>
+        <table>
+            <tr>
+                <td> <label id="lblSource" for="mapSource"> Source </label> </td>
+                <td> <input id="mapSource"> </td>
+            </tr>
+            <tr>
+                <td> <label id="lblCopyright" for="mapCopyright"> Copyright </label> </td>
+                <td> <input id="mapCopyright"> </td>
+            </tr>
+        </table>
+        <!-- Dropdown to select columns to show in Popup -->
+        <div>
+            <label for="popupFields">Select Fields for Popup:</label>
+            <select id="popupFields" multiple>
+                <option value="Name">Name</option>
+                <option value="AnotherOption1">Another Option 1</option>
+                <option value="AnotherOption2">Another Option 2</option>
+                <option value="Latitude">Latitude</option>
+                <option value="Longitude">Longitude</option>
+            </select>
         </div>
     </div>
-    <script src="script.js"></script>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.6.0/dist/leaflet-src.js"></script>
+
+    <!-- MarkerCluster JS -->
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
+    <!-- Geocoding JS (Optional) -->
+    <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+
+    <!-- Grist Plugin API -->
+    <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+
+    <!-- Main JS -->
+    <script>
+        "use strict";
+
+        /* global grist, window */
+
+        let amap;
+        let popups = {};
+        let selectedTableId = null;
+        let selectedRowId = null;
+        let selectedRecords = null;
+        let mode = 'multi';
+        let mapSource = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+        let mapCopyright = 'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, USGS, Intermap, iPC, NRCAN, Esri Japan, METI, Esri China (Hong Kong), Esri (Thailand), TomTom, 2012';
+        
+        // Required, Label value
+        const Name = "Name";
+        const Longitude = "Longitude";
+        const Latitude = "Latitude";
+        const Geocode = 'Geocode';
+        const Address = 'Address';
+        const GeocodedAddress = 'GeocodedAddress';
+        
+        // Additional optional fields
+        const AnotherOption1 = "AnotherOption1"; // New field
+        const AnotherOption2 = "AnotherOption2"; // New field
+
+        let lastRecord;
+        let lastRecords;
+
+        const selectedIcon =  new L.Icon({
+            iconUrl: 'marker-icon-green.png',
+            iconRetinaUrl: 'marker-icon-green-2x.png',
+            shadowUrl: 'marker-shadow.png',
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+            popupAnchor: [1, -34],
+            shadowSize: [41, 41]
+        });
+        const defaultIcon =  new L.Icon.Default();
+
+        // Function to get selected fields from the dropdown
+        function getSelectedFields() {
+            const select = document.getElementById('popupFields');
+            const selectedOptions = Array.from(select.selectedOptions).map(option => option.value);
+            return selectedOptions;
+        }
+
+        // Popup content function
+        function getPopupContent(record) {
+            const selectedFields = getSelectedFields();
+            let popupContent = '';
+
+            selectedFields.forEach(field => {
+                if (record[field]) {
+                    popupContent += `<b>${field}:</b> ${record[field]}<br>`;
+                } else {
+                    popupContent += `<b>${field}:</b> No data<br>`;
+                }
+            });
+
+            return popupContent;
+        }
+
+        function updateMap(data) {
+            data = data || selectedRecords;
+            selectedRecords = data;
+            if (!data || data.length === 0) {
+                showProblem("No data found yet");
+                return;
+            }
+
+            const tiles = L.tileLayer(mapSource, { attribution: mapCopyright });
+
+            const error = document.querySelector('.error');
+            if (error) { error.remove(); }
+            if (amap) {
+                try {
+                    amap.off();
+                    amap.remove();
+                } catch (e) {
+                    console.warn(e);
+                }
+            }
+
+            const map = L.map('map', {
+                layers: [tiles],
+                wheelPxPerZoomLevel: 90,
+            });
+
+            const points = [];
+            popups = {};
+
+            markers = L.markerClusterGroup({
+                disableClusteringAtZoom: 18,
+                maxClusterRadius: 30,
+                showCoverageOnHover: true,
+                clusterPane: 'clusters',
+            });
+
+            markers.on('click', (e) => {
+                const id = e.layer.options.id;
+                selectMaker(id);
+            });
+
+            for (const rec of data) {
+                const { id, name, lng, lat } = rec;
+                const pt = new L.LatLng(lat, lng);
+                points.push(pt);
+
+                const marker = L.marker(pt, {
+                    title: name,
+                    id: id,
+                    icon: (id == selectedRowId) ? selectedIcon : defaultIcon,
+                });
+
+                marker.bindPopup(getPopupContent(rec));  // Use getPopupContent to set dynamic content
+                markers.addLayer(marker);
+
+                popups[id] = marker;
+            }
+            map.addLayer(markers);
+
+            try {
+                map.fitBounds(new L.LatLngBounds(points), {maxZoom: 15, padding: [0, 0]});
+            } catch (err) {
+                console.warn('cannot fit bounds');
+            }
+
+            amap = map;
+        }
+
+        grist.onRecord((record) => {
+            if (mode === 'single') {
+                lastRecord = record;
+                updateMap([lastRecord]);
+            } else {
+                const marker = selectMaker(record.id);
+                if (!marker) { return; }
+                markers.zoomToShowLayer(marker);
+                marker.openPopup();
+            }
+        });
+
+        grist.onRecords((data) => {
+            lastRecords = data;
+            if (mode !== 'single') {
+                updateMap(lastRecords);
+                if (lastRecord) {
+                    selectMaker(lastRecord.id);
+                }
+            }
+        });
+
+        grist.onNewRecord(() => {
+            clearMakers();
+        });
+
+        function selectMaker(id) {
+            const marker = popups[id];
+            if (!marker) { return null; }
+            selectedRowId = id;
+            marker.openPopup();
+            return marker;
+        }
+
+        function showProblem(txt) {
+            document.getElementById('map').innerHTML = '<div class="error">' + txt + '</div>';
+        }
+    </script>
 </body>
 </html>
