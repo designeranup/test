@@ -97,17 +97,6 @@
                 <td> <input id="mapCopyright"> </td>
             </tr>
         </table>
-        <!-- Dropdown to select fields for Popup -->
-        <div>
-            <label for="popupFields">Select Fields for Popup:</label>
-            <select id="popupFields" multiple>
-                <option value="Name">Name</option>
-                <option value="AnotherOption1">Another Option 1</option>
-                <option value="AnotherOption2">Another Option 2</option>
-                <option value="Latitude">Latitude</option>
-                <option value="Longitude">Longitude</option>
-            </select>
-        </div>
     </div>
 
     <!-- Leaflet JS -->
@@ -141,18 +130,18 @@
         const Name = "Name";
         const Longitude = "Longitude";
         const Latitude = "Latitude";
+        
+        // Optional - new fields
+        const Option1 = "Option1"; // Optional - example field 1
+        const Option2 = "Option2"; // Optional - example field 2
+
+        // Optional - switch column to trigger geocoding
         const Geocode = 'Geocode';
         const Address = 'Address';
         const GeocodedAddress = 'GeocodedAddress';
         
-        // Additional optional fields
-        const AnotherOption1 = "AnotherOption1"; // New field
-        const AnotherOption2 = "AnotherOption2"; // New field
-
-        let lastRecord;
-        let lastRecords;
-
-        const selectedIcon =  new L.Icon({
+        // Color markers downloaded from leaflet repo, color-shifted to green
+        const selectedIcon = new L.Icon({
             iconUrl: 'marker-icon-green.png',
             iconRetinaUrl: 'marker-icon-green-2x.png',
             shadowUrl: 'marker-shadow.png',
@@ -161,43 +150,37 @@
             popupAnchor: [1, -34],
             shadowSize: [41, 41]
         });
-        const defaultIcon =  new L.Icon.Default();
 
-        // Function to get selected fields from the dropdown
-        function getSelectedFields() {
-            const select = document.getElementById('popupFields');
-            const selectedOptions = Array.from(select.selectedOptions).map(option => option.value);
-            return selectedOptions;
-        }
+        const defaultIcon = new L.Icon.Default();
 
-        // Popup content function
-        function getPopupContent(record) {
-            const selectedFields = getSelectedFields();
-            let popupContent = '';
-
-            selectedFields.forEach(field => {
-                if (record[field]) {
-                    popupContent += `<b>${field}:</b> ${record[field]}<br>`;
-                } else {
-                    popupContent += `<b>${field}:</b> No data<br>`;
-                }
-            });
-
-            return popupContent;
+        function getInfo(rec) {
+            const result = {
+                id: rec.id,
+                name: parseValue(rec[Name]),
+                option1: parseValue(rec[Option1]),
+                option2: parseValue(rec[Option2]),
+                lng: parseValue(rec[Longitude]),
+                lat: parseValue(rec[Latitude])
+            };
+            return result;
         }
 
         function updateMap(data) {
             data = data || selectedRecords;
             selectedRecords = data;
+
             if (!data || data.length === 0) {
                 showProblem("No data found yet");
                 return;
             }
 
+            if (!(Longitude in data[0] && Latitude in data[0] && Name in data[0])) {
+                showProblem("Table does not yet have all expected columns: Name, Longitude, Latitude, Option1, Option2.");
+                return;
+            }
+
             const tiles = L.tileLayer(mapSource, { attribution: mapCopyright });
 
-            const error = document.querySelector('.error');
-            if (error) { error.remove(); }
             if (amap) {
                 try {
                     amap.off();
@@ -209,17 +192,17 @@
 
             const map = L.map('map', {
                 layers: [tiles],
-                wheelPxPerZoomLevel: 90,
+                wheelPxPerZoomLevel: 90, // px, default 60, slows scrollwheel zoom
             });
 
-            const points = [];
-            popups = {};
-
+            const points = []; // L.LatLng[], used for zooming to bounds of all markers
+            popups = {}; // Map: {[rowid]: L.marker}
             markers = L.markerClusterGroup({
                 disableClusteringAtZoom: 18,
                 maxClusterRadius: 30,
                 showCoverageOnHover: true,
                 clusterPane: 'clusters',
+                iconCreateFunction: selectedRowClusterIconFactory(() => popups[selectedRowId]),
             });
 
             markers.on('click', (e) => {
@@ -228,36 +211,65 @@
             });
 
             for (const rec of data) {
-                const { id, name, lng, lat } = rec;
+                const {id, name, option1, option2, lng, lat} = getInfo(rec);
+
+                if (String(lng) === '...' || Math.abs(lat) < 0.01 || Math.abs(lng) < 0.01) {
+                    continue;
+                }
+
                 const pt = new L.LatLng(lat, lng);
                 points.push(pt);
+
+                const popupContent = `
+                    <div>
+                        <strong>Name:</strong> ${name || "N/A"}<br>
+                        <strong>Option1:</strong> ${option1 || "N/A"}<br>
+                        <strong>Option2:</strong> ${option2 || "N/A"}
+                    </div>
+                `;
 
                 const marker = L.marker(pt, {
                     title: name,
                     id: id,
-                    icon: (id == selectedRowId) ? selectedIcon : defaultIcon,
+                    icon: id == selectedRowId ? selectedIcon : defaultIcon,
+                    pane: id == selectedRowId ? "selectedMarker" : "otherMarkers",
                 });
 
-                marker.bindPopup(getPopupContent(rec));  // Use getPopupContent to set dynamic content
+                marker.bindPopup(popupContent);
                 markers.addLayer(marker);
-
                 popups[id] = marker;
             }
+
             map.addLayer(markers);
+            clearMakers = () => map.removeLayer(markers);
 
             try {
-                map.fitBounds(new L.LatLngBounds(points), {maxZoom: 15, padding: [0, 0]});
+                map.fitBounds(new L.LatLngBounds(points), { maxZoom: 15, padding: [0, 0] });
             } catch (err) {
-                console.warn('cannot fit bounds');
+                console.warn('Cannot fit bounds');
             }
 
             amap = map;
+
+            function makeSureSelectedMarkerIsShown() {
+                const rowId = selectedRowId;
+                if (rowId && popups[rowId]) {
+                    var marker = popups[rowId];
+                    if (!marker._icon) {
+                        markers.zoomToShowLayer(marker);
+                    }
+                    marker.openPopup();
+                }
+            }
+
+            makeSureSelectedMarkerIsShown();
         }
 
-        grist.onRecord((record) => {
+        grist.onRecord((record, mappings) => {
             if (mode === 'single') {
-                lastRecord = record;
-                updateMap([lastRecord]);
+                lastRecord = grist.mapColumnNames(record) || record;
+                selectOnMap(lastRecord);
+                scanOnNeed(defaultMapping(record, mappings));
             } else {
                 const marker = selectMaker(record.id);
                 if (!marker) { return; }
@@ -266,30 +278,46 @@
             }
         });
 
-        grist.onRecords((data) => {
-            lastRecords = data;
+        grist.onRecords((data, mappings) => {
+            lastRecords = grist.mapColumnNames(data) || data;
             if (mode !== 'single') {
                 updateMap(lastRecords);
                 if (lastRecord) {
-                    selectMaker(lastRecord.id);
+                    selectOnMap(lastRecord);
                 }
+                scanOnNeed(defaultMapping(data[0], mappings));
             }
         });
 
-        grist.onNewRecord(() => {
-            clearMakers();
+        grist.ready({
+            columns: [
+                "Name",
+                { name: "Longitude", type: 'Numeric' } ,
+                { name: "Latitude", type: 'Numeric' },
+                { name: "Geocode", type: 'Bool', title: 'Geocode', optional },
+                { name: "Address", type: 'Text', optional, optional },
+                { name: "GeocodedAddress", type: 'Text', title: 'Geocoded Address', optional },
+                { name: "Option1", type: 'Text', optional }, // New optional field
+                { name: "Option2", type: 'Text', optional }  // New optional field
+            ],
+            allowSelectBy: true,
+            onEditOptions
         });
 
-        function selectMaker(id) {
-            const marker = popups[id];
-            if (!marker) { return null; }
-            selectedRowId = id;
-            marker.openPopup();
-            return marker;
-        }
-
-        function showProblem(txt) {
-            document.getElementById('map').innerHTML = '<div class="error">' + txt + '</div>';
+        function defaultMapping(record, mappings) {
+            if (!mappings) {
+                return {
+                    [Longitude]: Longitude,
+                    [Name]: Name,
+                    [Latitude]: Latitude,
+                    [Address]: hasCol(Address, record) ? Address : null,
+                    [GeocodedAddress]: hasCol(GeocodedAddress, record) ? GeocodedAddress : null,
+                    [Geocode]: hasCol(Geocode, record) ? Geocode : null,
+                    [Option1]: Option1,
+                    [Option2]: Option2
+                };
+            }
+            return mappings;
         }
     </script>
 </body>
