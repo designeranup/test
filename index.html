@@ -125,200 +125,202 @@
         let mode = 'multi';
         let mapSource = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
         let mapCopyright = 'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, USGS, Intermap, iPC, NRCAN, Esri Japan, METI, Esri China (Hong Kong), Esri (Thailand), TomTom, 2012';
-        
+
         // Required, Label value
         const Name = "Name";
         const Longitude = "Longitude";
         const Latitude = "Latitude";
         
-        // Optional - new fields
-        const Option1 = "Option1"; // Optional - example field 1
-        const Option2 = "Option2"; // Optional - example field 2
+        // Optional - additional fields
+        const Option1 = "Option1"; // Optional field 1
+        const Option2 = "Option2"; // Optional field 2
 
         // Optional - switch column to trigger geocoding
         const Geocode = 'Geocode';
         const Address = 'Address';
         const GeocodedAddress = 'GeocodedAddress';
-        
-        // Color markers downloaded from leaflet repo, color-shifted to green
-        const selectedIcon = new L.Icon({
-            iconUrl: 'marker-icon-green.png',
-            iconRetinaUrl: 'marker-icon-green-2x.png',
-            shadowUrl: 'marker-shadow.png',
-            iconSize: [25, 41],
-            iconAnchor: [12, 41],
-            popupAnchor: [1, -34],
-            shadowSize: [41, 41]
-        });
 
+        //Color markers downloaded from leaflet repo, color-shifted to green
+        const selectedIcon = new L.Icon({
+          iconUrl: 'marker-icon-green.png',
+          iconRetinaUrl: 'marker-icon-green-2x.png',
+          shadowUrl: 'marker-shadow.png',
+          iconSize: [25, 41],
+          iconAnchor: [12, 41],
+          popupAnchor: [1, -34],
+          shadowSize: [41, 41]
+        });
         const defaultIcon = new L.Icon.Default();
 
         function getInfo(rec) {
-            const result = {
-                id: rec.id,
-                name: parseValue(rec[Name]),
-                option1: parseValue(rec[Option1]),
-                option2: parseValue(rec[Option2]),
-                lng: parseValue(rec[Longitude]),
-                lat: parseValue(rec[Latitude])
-            };
-            return result;
+          const result = {
+            id: rec.id,
+            name: parseValue(rec[Name]),
+            option1: parseValue(rec[Option1]),
+            option2: parseValue(rec[Option2]),
+            lng: parseValue(rec[Longitude]),
+            lat: parseValue(rec[Latitude])
+          };
+          return result;
         }
 
         function updateMap(data) {
-            data = data || selectedRecords;
-            selectedRecords = data;
+          data = data || selectedRecords;
+          selectedRecords = data;
 
-            if (!data || data.length === 0) {
-                showProblem("No data found yet");
-                return;
-            }
+          if (!data || data.length === 0) {
+            showProblem("No data found yet");
+            return;
+          }
 
-            if (!(Longitude in data[0] && Latitude in data[0] && Name in data[0])) {
-                showProblem("Table does not yet have all expected columns: Name, Longitude, Latitude, Option1, Option2.");
-                return;
-            }
+          if (!(Longitude in data[0] && Latitude in data[0] && Name in data[0])) {
+            showProblem("Table does not yet have all expected columns: Name, Longitude, Latitude, Option1, Option2.");
+            return;
+          }
 
-            const tiles = L.tileLayer(mapSource, { attribution: mapCopyright });
+          const tiles = L.tileLayer(mapSource, { attribution: mapCopyright });
 
-            if (amap) {
-                try {
-                    amap.off();
-                    amap.remove();
-                } catch (e) {
-                    console.warn(e);
-                }
-            }
-
-            const map = L.map('map', {
-                layers: [tiles],
-                wheelPxPerZoomLevel: 90, // px, default 60, slows scrollwheel zoom
-            });
-
-            const points = []; // L.LatLng[], used for zooming to bounds of all markers
-            popups = {}; // Map: {[rowid]: L.marker}
-            markers = L.markerClusterGroup({
-                disableClusteringAtZoom: 18,
-                maxClusterRadius: 30,
-                showCoverageOnHover: true,
-                clusterPane: 'clusters',
-                iconCreateFunction: selectedRowClusterIconFactory(() => popups[selectedRowId]),
-            });
-
-            markers.on('click', (e) => {
-                const id = e.layer.options.id;
-                selectMaker(id);
-            });
-
-            for (const rec of data) {
-                const {id, name, option1, option2, lng, lat} = getInfo(rec);
-
-                if (String(lng) === '...' || Math.abs(lat) < 0.01 || Math.abs(lng) < 0.01) {
-                    continue;
-                }
-
-                const pt = new L.LatLng(lat, lng);
-                points.push(pt);
-
-                const popupContent = `
-                    <div>
-                        <strong>Name:</strong> ${name || "N/A"}<br>
-                        <strong>Option1:</strong> ${option1 || "N/A"}<br>
-                        <strong>Option2:</strong> ${option2 || "N/A"}
-                    </div>
-                `;
-
-                const marker = L.marker(pt, {
-                    title: name,
-                    id: id,
-                    icon: id == selectedRowId ? selectedIcon : defaultIcon,
-                    pane: id == selectedRowId ? "selectedMarker" : "otherMarkers",
-                });
-
-                marker.bindPopup(popupContent);
-                markers.addLayer(marker);
-                popups[id] = marker;
-            }
-
-            map.addLayer(markers);
-            clearMakers = () => map.removeLayer(markers);
-
+          if (amap) {
             try {
-                map.fitBounds(new L.LatLngBounds(points), { maxZoom: 15, padding: [0, 0] });
-            } catch (err) {
-                console.warn('Cannot fit bounds');
+              amap.off();
+              amap.remove();
+            } catch (e) {
+              console.warn(e);
+            }
+          }
+
+          const map = L.map('map', {
+            layers: [tiles],
+            wheelPxPerZoomLevel: 90, // px, default 60, slows scrollwheel zoom
+          });
+
+          const points = []; // L.LatLng[], used for zooming to bounds of all markers
+          popups = {}; // Map: {[rowid]: L.marker}
+          markers = L.markerClusterGroup({
+            disableClusteringAtZoom: 18,
+            maxClusterRadius: 30,
+            showCoverageOnHover: true,
+            clusterPane: 'clusters',
+            iconCreateFunction: selectedRowClusterIconFactory(() => popups[selectedRowId]),
+          });
+
+          markers.on('click', (e) => {
+            const id = e.layer.options.id;
+            selectMaker(id);
+          });
+
+          for (const rec of data) {
+            const {id, name, option1, option2, lng, lat} = getInfo(rec);
+
+            if (String(lng) === '...' || Math.abs(lat) < 0.01 || Math.abs(lng) < 0.01) {
+                continue;
             }
 
-            amap = map;
+            const pt = new L.LatLng(lat, lng);
+            points.push(pt);
 
-            function makeSureSelectedMarkerIsShown() {
-                const rowId = selectedRowId;
-                if (rowId && popups[rowId]) {
-                    var marker = popups[rowId];
-                    if (!marker._icon) {
-                        markers.zoomToShowLayer(marker);
-                    }
-                    marker.openPopup();
-                }
+            const popupContent = `
+              <div>
+                  <strong>Name:</strong> ${name || "N/A"}<br>
+                  <strong>Option1:</strong> ${option1 || "N/A"}<br>
+                  <strong>Option2:</strong> ${option2 || "N/A"}
+              </div>
+            `;
+
+            const marker = L.marker(pt, {
+                title: name,
+                id: id,
+                icon: id == selectedRowId ? selectedIcon : defaultIcon,
+                pane: id == selectedRowId ? "selectedMarker" : "otherMarkers",
+            });
+
+            marker.bindPopup(popupContent);
+            markers.addLayer(marker);
+
+            popups[id] = marker;
+          }
+          map.addLayer(markers);
+          clearMakers = () => map.removeLayer(markers);
+
+          try {
+            map.fitBounds(new L.LatLngBounds(points), {maxZoom: 15, padding: [0, 0]});
+          } catch (err) {
+            console.warn('cannot fit bounds');
+          }
+
+          amap = map;
+
+          function makeSureSelectedMarkerIsShown() {
+            const rowId = selectedRowId;
+            if (rowId && popups[rowId]) {
+              var marker = popups[rowId];
+              if (!marker._icon) { markers.zoomToShowLayer(marker); }
+              marker.openPopup();
             }
+          }
 
-            makeSureSelectedMarkerIsShown();
+          makeSureSelectedMarkerIsShown();
         }
 
+        function selectMaker(id) {
+          const previouslyClicked = popups[selectedRowId];
+          if (previouslyClicked) {
+            previouslyClicked.setIcon(defaultIcon);
+            previouslyClicked.pane = 'otherMarkers';
+          }
+          const marker = popups[id];
+          if (!marker) { return null; }
+
+          selectedRowId = id;
+          marker.setIcon(selectedIcon);
+          previouslyClicked.pane = 'selectedMarker';
+          markers.refreshClusters();
+          grist.setCursorPos?.({rowId: id}).catch(() => {});
+          return marker;
+        }
+
+        grist.on('message', (e) => {
+          if (e.tableId) { selectedTableId = e.tableId; }
+        });
+
         grist.onRecord((record, mappings) => {
-            if (mode === 'single') {
-                lastRecord = grist.mapColumnNames(record) || record;
-                selectOnMap(lastRecord);
-                scanOnNeed(defaultMapping(record, mappings));
-            } else {
-                const marker = selectMaker(record.id);
-                if (!marker) { return; }
-                markers.zoomToShowLayer(marker);
-                marker.openPopup();
-            }
+          if (mode === 'single') {
+            lastRecord = grist.mapColumnNames(record) || record;
+            selectOnMap(lastRecord);
+            scanOnNeed(defaultMapping(record, mappings));
+          } else {
+            const marker = selectMaker(record.id);
+            if (!marker) { return; }
+            markers.zoomToShowLayer(marker);
+            marker.openPopup();
+          }
         });
 
         grist.onRecords((data, mappings) => {
-            lastRecords = grist.mapColumnNames(data) || data;
-            if (mode !== 'single') {
-                updateMap(lastRecords);
-                if (lastRecord) {
-                    selectOnMap(lastRecord);
-                }
-                scanOnNeed(defaultMapping(data[0], mappings));
+          lastRecords = grist.mapColumnNames(data) || data;
+          if (mode !== 'single') {
+            updateMap(lastRecords);
+            if (lastRecord) {
+              selectOnMap(lastRecord);
             }
+            scanOnNeed(defaultMapping(data[0], mappings));
+          }
         });
 
         grist.ready({
-            columns: [
-                "Name",
-                { name: "Longitude", type: 'Numeric' } ,
-                { name: "Latitude", type: 'Numeric' },
-                { name: "Geocode", type: 'Bool', title: 'Geocode', optional },
-                { name: "Address", type: 'Text', optional, optional },
-                { name: "GeocodedAddress", type: 'Text', title: 'Geocoded Address', optional },
-                { name: "Option1", type: 'Text', optional }, // New optional field
-                { name: "Option2", type: 'Text', optional }  // New optional field
-            ],
-            allowSelectBy: true,
-            onEditOptions
+          columns: [
+            "Name",
+            { name: "Longitude", type: 'Numeric' } ,
+            { name: "Latitude", type: 'Numeric' },
+            { name: "Geocode", type: 'Bool', title: 'Geocode', optional },
+            { name: "Address", type: 'Text', optional },
+            { name: "GeocodedAddress", type: 'Text', title: 'Geocoded Address', optional },
+            { name: "Option1", type: 'Text', optional }, // New optional field
+            { name: "Option2", type: 'Text', optional }  // New optional field
+          ],
+          allowSelectBy: true,
+          onEditOptions
         });
-
-        function defaultMapping(record, mappings) {
-            if (!mappings) {
-                return {
-                    [Longitude]: Longitude,
-                    [Name]: Name,
-                    [Latitude]: Latitude,
-                    [Address]: hasCol(Address, record) ? Address : null,
-                    [GeocodedAddress]: hasCol(GeocodedAddress, record) ? GeocodedAddress : null,
-                    [Geocode]: hasCol(Geocode, record) ? Geocode : null,
-                    [Option1]: Option1,
-                    [Option2]: Option2
-                };
-            }
-            return mappings;
-        }
     </script>
 </body>
 </html>
